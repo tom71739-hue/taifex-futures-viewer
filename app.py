@@ -87,17 +87,10 @@ else:
 available_fields = {k: v for k, v in NUMERIC_FIELDS.items() if k in df.columns and df[k].notna().any()}
 label_to_col = {v: k for k, v in available_fields.items()}
 
-# K 線需要現貨開高低收四欄都有資料
-OHLC = ["spot_open", "spot_high", "spot_low", "spot_close"]
-kline_available = all(c in df.columns and df[c].notna().any() for c in OHLC)
+options = list(label_to_col.keys())
 
-KLINE_LABEL = "K 線（現貨開高低收）"
-options = ([KLINE_LABEL] if kline_available else []) + list(label_to_col.keys())
-
-# 預設：有 K 線就先選 K 線，否則選現貨收盤價
-if kline_available:
-    default_opt = KLINE_LABEL
-elif "現貨收盤價" in label_to_col:
+# 預設：現貨收盤價
+if "現貨收盤價" in label_to_col:
     default_opt = "現貨收盤價"
 else:
     default_opt = options[0] if options else None
@@ -120,41 +113,14 @@ if not chosen:
     st.info("這個期貨沒有可呈現的資料欄位。")
     st.stop()
 
-if chosen == KLINE_LABEL:
-    # ---- K 線圖（現貨開高低收）----
-    import plotly.graph_objects as go
-    k = view.dropna(subset=OHLC)
-    if k.empty:
-        st.warning("此區間沒有完整的現貨開高低收資料，無法畫 K 線。")
-        st.stop()
-    fig = go.Figure(data=[go.Candlestick(
-        x=k["date"],
-        open=k["spot_open"], high=k["spot_high"],
-        low=k["spot_low"], close=k["spot_close"],
-        increasing_line_color="#d1495b", decreasing_line_color="#2a9d8f",
-        name="現貨")])
-    fig.update_layout(xaxis_rangeslider_visible=False, height=520,
-                      margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+# ---- 單一欄位折線圖 ----
+col = label_to_col[chosen]
+chart_df = view.set_index("date")[[col]].rename(columns={col: chosen})
+st.line_chart(chart_df)
 
-    with st.expander("查看原始資料表格"):
-        tcols = ["date"] + OHLC
-        table = view[tcols].rename(columns={
-            "date": "日期", "spot_open": "開", "spot_high": "高",
-            "spot_low": "低", "spot_close": "收"})
-        st.dataframe(table, use_container_width=True, hide_index=True)
-        csv_bytes = table.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("下載目前區間 CSV", data=csv_bytes,
-                           file_name=f"{contract}_K線_{start_d}_{end_d}.csv", mime="text/csv")
-else:
-    # ---- 單一欄位折線圖 ----
-    col = label_to_col[chosen]
-    chart_df = view.set_index("date")[[col]].rename(columns={col: chosen})
-    st.line_chart(chart_df)
-
-    with st.expander("查看原始資料表格"):
-        table = view[["date", col]].rename(columns={"date": "日期", col: chosen})
-        st.dataframe(table, use_container_width=True, hide_index=True)
-        csv_bytes = table.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("下載目前區間 CSV", data=csv_bytes,
-                           file_name=f"{contract}_{start_d}_{end_d}.csv", mime="text/csv")
+with st.expander("查看原始資料表格"):
+    table = view[["date", col]].rename(columns={"date": "日期", col: chosen})
+    st.dataframe(table, use_container_width=True, hide_index=True)
+    csv_bytes = table.to_csv(index=False).encode("utf-8-sig")
+    st.download_button("下載目前區間 CSV", data=csv_bytes,
+                       file_name=f"{contract}_{start_d}_{end_d}.csv", mime="text/csv")
